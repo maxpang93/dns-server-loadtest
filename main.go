@@ -18,6 +18,9 @@ func main() {
 	defer conn.Close()
 
 	buffer := make([]byte, 1024)
+	// semaphore to limit concurrency
+	concurrencyLimit := 10000
+	sem := make(chan struct{}, concurrencyLimit)
 	for {
 		n, addr, err := conn.ReadFromUDP(buffer)
 		if err != nil {
@@ -26,13 +29,16 @@ func main() {
 		}
 		data := make([]byte, n)
 		copy(data, buffer[:n])
-		go handleUDPConnection(conn, addr, data)
+		sem <- struct{}{}
+		go func() {
+			defer func() { <-sem }() // consume the token from channel
+			handleUDPPacket(conn, addr, data)
+		}()
 
 	}
 }
 
-func handleUDPConnection(conn *net.UDPConn, remoteAddr *net.UDPAddr, data []byte) {
-
+func handleUDPPacket(conn *net.UDPConn, remoteAddr *net.UDPAddr, data []byte) {
 	fmt.Printf("Read %v bytes from %s\n", len(data), remoteAddr)
 	resp := fmt.Sprintf("Msg received: %v\n", string(data))
 	fmt.Println(resp)
